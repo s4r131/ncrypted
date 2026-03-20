@@ -1,0 +1,10 @@
+* text=auto
+*.dart text eol=lf
+*.swift text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.lock text eol=lf
+*.plist text eol=lf
+*.pbxproj text eol=lf
+*.xcconfig text eol=lf
+Podfile text eol=lf

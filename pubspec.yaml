@@ -1,0 +1,57 @@
+name: ncrypted
+description: Cross-platform end-to-end encrypted file sharing with QR key exchange and .ncry packages for ncrypted.
+publish_to: none
+version: 1.0.0+2
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Core crypto library for Dart.
+  # Provides RSA, AES-GCM, OAEP, PSS, SHA-256.
+  # This is the pointycastle equivalent of Python's cryptography (hazmat).
+  pointycastle: ^3.7.4
+
+  # Stores the RSA private key in the OS secure enclave.
+  # iOS  → Keychain Services
+  # Android → Android Keystore
+  # Never touches the filesystem — more secure than our Python PEM files.
+  flutter_secure_storage: ^9.0.0
+
+  # Renders a widget that displays any string as a QR code.
+  # Used on the "My Key" screen to display your public key.
+  qr_flutter: ^4.1.0
+
+  # Camera-based QR scanner.
+  # Decodes a scanned QR → PEM string → saved as a contact.
+  mobile_scanner: ^5.1.0
+
+  # Native file picker dialog.
+  # Used on the Send screen to choose a file to encrypt.
+  file_picker: ^8.0.0
+  google_fonts: ^8.0.2
+  flutter_svg: ^2.2.4
+  shared_preferences: ^2.5.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/branding/ncry_logo_icon.png
+  min_sdk_android: 21
+  remove_alpha_ios: true
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/branding/ncry_logo.svg
+    - assets/branding/ncry_logo_icon.png
+    - assets/branding/sabre_terminal_orange.png
