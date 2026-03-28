@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
@@ -77,152 +79,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _showAddContactDialog({String? initialPem}) async {
-    final nameController = TextEditingController();
-    final pemController = TextEditingController(text: initialPem ?? '');
-    final emailController = TextEditingController();
-    final phoneController = TextEditingController();
-    final notesController = TextEditingController();
-
-    await showDialog<void>(
+    final addedContact = await showDialog<Contact>(
       context: context,
-      builder: (context) {
-        bool isSaving = false;
-        String? inlineError;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            Future<void> save() async {
-              final displayName = nameController.text.trim();
-              final pem = pemController.text.trim();
-              if (displayName.isEmpty || pem.isEmpty) {
-                setDialogState(() => inlineError = 'Name and Public PEM are required.');
-                return;
-              }
-
-              try {
-                setDialogState(() {
-                  isSaving = true;
-                  inlineError = null;
-                });
-
-                final publicKey = CryptoService.pemToPublicKey(pem);
-                final fingerprint = CryptoService.fingerprint(publicKey);
-
-                final contact = Contact(
-                  id: _newContactId(),
-                  displayName: displayName,
-                  publicKeyPem: pem,
-                  fingerprint: fingerprint,
-                  addedAt: DateTime.now().toIso8601String(),
-                  email: emailController.text.trim().isEmpty
-                      ? null
-                      : emailController.text.trim(),
-                  phone: phoneController.text.trim().isEmpty
-                      ? null
-                      : phoneController.text.trim(),
-                  notes: notesController.text.trim().isEmpty
-                      ? null
-                      : notesController.text.trim(),
-                );
-
-                await KeyStore.addContact(contact);
-                if (!context.mounted) return;
-                Navigator.of(context).pop();
-                await _loadContacts();
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Added ${contact.displayName}')),
-                );
-              } catch (e) {
-                setDialogState(() {
-                  isSaving = false;
-                  inlineError = 'Invalid public key PEM.';
-                });
-              }
-            }
-
-            return AlertDialog(
-              title: const Text('Add Contact'),
-              content: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextField(
-                        controller: nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Display Name',
-                          hintText: 'Alice',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: emailController,
-                        decoration: const InputDecoration(
-                          labelText: 'Email (optional)',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: phoneController,
-                        decoration: const InputDecoration(
-                          labelText: 'Phone (optional)',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: notesController,
-                        decoration: const InputDecoration(
-                          labelText: 'Notes (optional)',
-                        ),
-                        minLines: 2,
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: pemController,
-                        decoration: const InputDecoration(
-                          labelText: 'Public PEM',
-                          hintText: '-----BEGIN PUBLIC KEY----- ...',
-                        ),
-                        minLines: 6,
-                        maxLines: 10,
-                      ),
-                      if (inlineError != null) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          inlineError!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSaving ? null : () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: isSaving ? null : save,
-                  child: Text(isSaving ? 'Saving...' : 'Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (dialogContext) => _AddContactDialog(
+        initialPem: initialPem,
+        newContactId: _newContactId,
+      ),
     );
+    if (!mounted || addedContact == null) return;
 
-    nameController.dispose();
-    pemController.dispose();
-    emailController.dispose();
-    phoneController.dispose();
-    notesController.dispose();
+    await _loadContacts();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Added ${addedContact.displayName}')),
+    );
   }
 
   Future<void> _deleteContact(Contact contact) async {
@@ -329,7 +199,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       leading: CircleAvatar(
                         child: Text(contact.displayName.isEmpty ? '?' : contact.displayName[0].toUpperCase()),
                       ),
-                      title: Text(contact.displayName),
+                      title: Text(
+                        contact.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       subtitle: Text('FP ${_shortFp(contact.fingerprint)}'),
                       trailing: IconButton(
                         tooltip: 'Delete',
@@ -341,6 +215,176 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+class _AddContactDialog extends StatefulWidget {
+  const _AddContactDialog({
+    required this.newContactId,
+    this.initialPem,
+  });
+
+  final String? initialPem;
+  final String Function() newContactId;
+
+  @override
+  State<_AddContactDialog> createState() => _AddContactDialogState();
+}
+
+class _AddContactDialogState extends State<_AddContactDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _pemController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _notesController;
+
+  bool _isSaving = false;
+  String? _inlineError;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    _pemController = TextEditingController(text: widget.initialPem ?? '');
+    _emailController = TextEditingController();
+    _phoneController = TextEditingController();
+    _notesController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _pemController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final displayName = _nameController.text.trim();
+    final pem = _pemController.text.trim();
+    if (displayName.isEmpty || pem.isEmpty) {
+      setState(() => _inlineError = 'Name and Public PEM are required.');
+      return;
+    }
+
+    try {
+      setState(() {
+        _isSaving = true;
+        _inlineError = null;
+      });
+
+      final publicKey = CryptoService.pemToPublicKey(pem);
+      final fingerprint = CryptoService.fingerprint(publicKey);
+      final contact = Contact(
+        id: widget.newContactId(),
+        displayName: displayName,
+        publicKeyPem: pem,
+        fingerprint: fingerprint,
+        addedAt: DateTime.now().toIso8601String(),
+        email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
+        phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+        notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      );
+
+      await KeyStore.addContact(contact);
+      if (!mounted) return;
+      Navigator.of(context).pop(contact);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isSaving = false;
+        _inlineError = 'Invalid public key PEM.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final safeInsets = EdgeInsets.fromLTRB(
+      math.max(0, mediaQuery.viewInsets.left),
+      math.max(0, mediaQuery.viewInsets.top),
+      math.max(0, mediaQuery.viewInsets.right),
+      math.max(0, mediaQuery.viewInsets.bottom),
+    );
+
+    return MediaQuery(
+      data: mediaQuery.copyWith(viewInsets: safeInsets),
+      child: AlertDialog(
+        title: const Text('Add Contact'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Display Name',
+                    hintText: 'Alice',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email (optional)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _phoneController,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone (optional)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _notesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                  ),
+                  minLines: 2,
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _pemController,
+                  decoration: const InputDecoration(
+                    labelText: 'Public PEM',
+                    hintText: '-----BEGIN PUBLIC KEY----- ...',
+                  ),
+                  minLines: 6,
+                  maxLines: 10,
+                ),
+                if (_inlineError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _inlineError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: _isSaving ? null : _save,
+            child: Text(_isSaving ? 'Saving...' : 'Save'),
+          ),
+        ],
+      ),
     );
   }
 }

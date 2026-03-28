@@ -258,11 +258,15 @@ class _OptionsScreenState extends State<OptionsScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final contentMaxWidth = screenWidth >= 1100 ? 920.0 : (screenWidth >= 800 ? 760.0 : 460.0);
+    final horizontalPadding = screenWidth >= 900 ? 28.0 : 16.0;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
+          constraints: BoxConstraints(maxWidth: contentMaxWidth),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(16),

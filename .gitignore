@@ -33,7 +33,6 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
-flutter
 .fvm/
 web/build/
 
@@ -57,8 +56,6 @@ app.*.map.json
 **/ios/**/Flutter/Generated.xcconfig
 **/ios/**/Flutter/ephemeral/
 **/ios/**/Pods/
-**/ios/**/Runner/GeneratedPluginRegistrant.*
-**/ios/Podfile.lock
 
 # Android/Java
 **/android/**/gradle-wrapper.jar
@@ -79,6 +76,5 @@ ncrypt_logo_variants.html
 ncrypt_logo_final.svg
 
 # Exceptions to above rules.
-!/ios/Flutter/Flutter.podspec
 !**/ios/**/default.*
 !**/macos/**/default.*

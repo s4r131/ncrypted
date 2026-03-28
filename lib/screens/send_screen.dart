@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 
 import '../models/ncry_contact.dart';
@@ -22,6 +24,7 @@ class SendScreen extends StatefulWidget {
 class _SendScreenState extends State<SendScreen> {
   bool _isLoading = true;
   bool _isEncrypting = false;
+  final ImagePicker _imagePicker = ImagePicker();
   List<IdentityProfile> _identities = const [];
   String? _selectedIdentityId;
   List<Contact> _contacts = const [];
@@ -90,9 +93,23 @@ class _SendScreenState extends State<SendScreen> {
     if (result == null || result.files.isEmpty) return;
 
     final path = result.files.single.path;
+    _setSelectedPath(path, unsupportedMessage: 'Selected file has no local path on this platform.');
+  }
+
+  Future<void> _pickImage() async {
+    setState(() {
+      _error = null;
+      _status = null;
+    });
+
+    final image = await _imagePicker.pickImage(source: ImageSource.gallery);
+    _setSelectedPath(image?.path, unsupportedMessage: 'Selected image has no local path on this platform.');
+  }
+
+  void _setSelectedPath(String? path, {required String unsupportedMessage}) {
     if (path == null || path.trim().isEmpty) {
       setState(() {
-        _error = 'Selected file has no local path on this platform.';
+        _error = unsupportedMessage;
       });
       return;
     }
@@ -106,6 +123,21 @@ class _SendScreenState extends State<SendScreen> {
     final normalized = path.replaceAll('\\', '/');
     final parts = normalized.split('/');
     return parts.isEmpty ? path : parts.last;
+  }
+
+  String _shortFingerprint(String fp) {
+    if (fp.length <= 17) return fp;
+    return '${fp.substring(0, 8)}...${fp.substring(fp.length - 8)}';
+  }
+
+  String _contactLabel(Contact c) {
+    return '${c.displayName} (${_shortFingerprint(c.fingerprint)})';
+  }
+
+  String _normalizedNcryFilename(String sourcePath) {
+    final base = _basename(sourcePath);
+    final stem = base.replaceFirst(RegExp(r'\.ncry$', caseSensitive: false), '');
+    return '$stem.ncry';
   }
 
   String? _guessMimeType(String filename) {
@@ -136,9 +168,15 @@ class _SendScreenState extends State<SendScreen> {
       return;
     }
     if (filePath == null) {
-      setState(() => _error = 'Pick a file first.');
+      setState(() => _error = 'Pick a file or image first.');
       return;
     }
+
+    final initialBox = context.findRenderObject() as RenderBox?;
+    final initialMediaSize = MediaQuery.sizeOf(context);
+    final shareOrigin = initialBox == null || !initialBox.hasSize
+        ? Rect.fromLTWH(0, 0, initialMediaSize.width, initialMediaSize.height)
+        : initialBox.localToGlobal(Offset.zero) & initialBox.size;
 
     setState(() {
       _isEncrypting = true;
@@ -173,16 +211,33 @@ class _SendScreenState extends State<SendScreen> {
       );
       final encoded = PackageService.encode(package);
 
-      final outputPath = '$filePath.ncry';
-      await File(outputPath).writeAsBytes(encoded, flush: true);
+      final suggestedFilename = _normalizedNcryFilename(filePath);
+      final shareResult = await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              encoded,
+              mimeType: 'application/octet-stream',
+            ),
+          ],
+          fileNameOverrides: [suggestedFilename],
+          sharePositionOrigin: shareOrigin,
+        ),
+      );
 
       if (!mounted) return;
+      final resultLine = switch (shareResult.status) {
+        ShareResultStatus.success => 'Encrypted package shared.',
+        ShareResultStatus.dismissed => 'Share canceled. File not saved.',
+        ShareResultStatus.unavailable => 'Share sheet opened.',
+      };
       setState(() {
-        _status = 'Saved encrypted file:\n$outputPath\nSender identity: ${identity.displayName}';
+        _status =
+            'Encrypted package ready (not auto-saved).\n$resultLine\nSender identity: ${identity.displayName}';
         _isEncrypting = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Encryption complete')),
+        const SnackBar(content: Text('Encryption complete. Choose "Save to Files" to keep it.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -199,11 +254,15 @@ class _SendScreenState extends State<SendScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final contentMaxWidth = screenWidth >= 1100 ? 920.0 : (screenWidth >= 800 ? 760.0 : 560.0);
+    final horizontalPadding = screenWidth >= 900 ? 28.0 : 16.0;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
+          constraints: BoxConstraints(maxWidth: contentMaxWidth),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -211,20 +270,36 @@ class _SendScreenState extends State<SendScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Send Encrypted File',
+                    'Send Encrypted File/Image',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _selectedIdentityId,
+                    isExpanded: true,
                     items: _identities
                         .map(
                           (identity) => DropdownMenuItem<String>(
                             value: identity.id,
-                            child: Text(identity.displayName),
+                            child: Text(
+                              identity.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
+                    selectedItemBuilder: (context) {
+                      return _identities
+                          .map(
+                            (identity) => Text(
+                              identity.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          )
+                          .toList();
+                    },
                     onChanged: _isEncrypting
                         ? null
                         : (value) async {
@@ -243,14 +318,30 @@ class _SendScreenState extends State<SendScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<Contact>(
                     initialValue: _selectedContact,
+                    isExpanded: true,
                     items: _contacts
                         .map(
                           (c) => DropdownMenuItem<Contact>(
                             value: c,
-                            child: Text('${c.displayName} (${c.fingerprint})'),
+                            child: Text(
+                              _contactLabel(c),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
+                    selectedItemBuilder: (context) {
+                      return _contacts
+                          .map(
+                            (c) => Text(
+                              _contactLabel(c),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          )
+                          .toList();
+                    },
                     onChanged: _isEncrypting
                         ? null
                         : (value) => setState(() => _selectedContact = value),
@@ -259,14 +350,26 @@ class _SendScreenState extends State<SendScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _isEncrypting ? null : _pickFile,
-                    icon: const Icon(Icons.attach_file),
-                    label: const Text('Pick File'),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _isEncrypting ? null : _pickFile,
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text('File'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _isEncrypting ? null : _pickImage,
+                        icon: const Icon(Icons.image_outlined),
+                        label: const Text('Image'),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _selectedFilePath ?? 'No file selected',
+                    _selectedFilePath == null ? 'No file/image selected' : _basename(_selectedFilePath!),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 16),

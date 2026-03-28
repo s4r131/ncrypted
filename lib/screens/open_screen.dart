@@ -84,7 +84,9 @@ class _OpenScreenState extends State<OpenScreen> {
 
   String _senderLabel(Contact? sender) {
     if (sender == null) return 'unknown sender';
-    return '${sender.displayName} (${sender.fingerprint})';
+    final fp = sender.fingerprint;
+    final shortFp = fp.length <= 17 ? fp : '${fp.substring(0, 8)}...${fp.substring(fp.length - 8)}';
+    return '${sender.displayName} ($shortFp)';
   }
 
   String _friendlyDecryptError(Object e) {
@@ -273,11 +275,15 @@ class _OpenScreenState extends State<OpenScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final contentMaxWidth = screenWidth >= 1100 ? 920.0 : (screenWidth >= 800 ? 760.0 : 560.0);
+    final horizontalPadding = screenWidth >= 900 ? 28.0 : 16.0;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
+          constraints: BoxConstraints(maxWidth: contentMaxWidth),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -318,6 +324,8 @@ class _OpenScreenState extends State<OpenScreen> {
                           _lastSignatureVerified!
                               ? 'VERIFIED${_lastSenderDisplay == null ? '' : ': $_lastSenderDisplay'}'
                               : 'UNVERIFIED SENDER',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),

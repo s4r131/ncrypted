@@ -320,11 +320,16 @@ class _MyKeyScreenState extends State<MyKeyScreen> {
       );
     }
 
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final contentMaxWidth = screenWidth >= 900 ? 760.0 : (screenWidth >= 700 ? 620.0 : 460.0);
+    final horizontalPadding = screenWidth >= 900 ? 28.0 : 16.0;
+    final qrSize = screenWidth >= 900 ? 340.0 : 260.0;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 460),
+          constraints: BoxConstraints(maxWidth: contentMaxWidth),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -339,14 +344,33 @@ class _MyKeyScreenState extends State<MyKeyScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _activeIdentityId,
+                    isExpanded: true,
                     items: _identities
                         .map(
                           (identity) => DropdownMenuItem<String>(
                             value: identity.id,
-                            child: Text(identity.displayName),
+                            child: Text(
+                              identity.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         )
                         .toList(),
+                    selectedItemBuilder: (context) {
+                      return _identities
+                          .map(
+                            (identity) => Tooltip(
+                              message: identity.displayName,
+                              child: Text(
+                                identity.displayName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList();
+                    },
                     onChanged: _isLoading
                         ? null
                         : (value) {
@@ -384,6 +408,8 @@ class _MyKeyScreenState extends State<MyKeyScreen> {
                     'Profile: ${_activeIdentity?.displayName ?? 'Unknown'}',
                     style: Theme.of(context).textTheme.bodyMedium,
                     textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -402,7 +428,7 @@ class _MyKeyScreenState extends State<MyKeyScreen> {
                       alignment: Alignment.center,
                       child: QrImageView(
                         data: _publicPem!,
-                        size: 260,
+                        size: qrSize,
                         version: QrVersions.auto,
                         gapless: false,
                       ),

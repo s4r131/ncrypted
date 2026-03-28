@@ -32,6 +32,8 @@ dependencies:
   # Native file picker dialog.
   # Used on the Send screen to choose a file to encrypt.
   file_picker: ^8.0.0
+  image_picker: ^1.2.1
+  share_plus: ^12.0.1
   google_fonts: ^8.0.2
   flutter_svg: ^2.2.4
   shared_preferences: ^2.5.4
